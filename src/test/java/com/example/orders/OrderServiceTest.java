@@ -107,7 +107,7 @@ class OrderServiceTest {
         
         assertEquals(1, pendingOrders.size());
         assertEquals(1, shippedOrders.size());
-        assertEquals(OrderStatus.SHIPPED, shippedOrders.get(0).getStatus());
+        assertEquals(OrderStatus.SHIPPED, shippedOrders.getFirst().getStatus());
     }
     
     @Test
