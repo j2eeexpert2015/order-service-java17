@@ -398,7 +398,30 @@ This will:
 - Upgrade Spring Boot parent from 3.1.5 to 3.3.x
 - Replace `list.get(0)` with `list.getFirst()` in test class
 
-### Step 5: Verify the Changes
+### Step 5: Verify the Changes with git diff
+
+Before building, confirm exactly what OpenRewrite wrote to disk:
+
+```bash
+git diff
+```
+
+You should see exactly 5 changes — 4 in `pom.xml` and 1 in `OrderServiceTest.java`:
+
+```diff
+-        <version>3.1.5</version>
++        <version>3.3.13</version>
+-        <java.version>17</java.version>
++        <java.version>21</java.version>
+-        <maven.compiler.source>17</maven.compiler.source>
++        <maven.compiler.source>21</maven.compiler.source>
+-        <maven.compiler.target>17</maven.compiler.target>
++        <maven.compiler.target>21</maven.compiler.target>
+-        assertEquals(OrderStatus.SHIPPED, shippedOrders.get(0).getStatus());
++        assertEquals(OrderStatus.SHIPPED, shippedOrders.getFirst().getStatus());
+```
+
+### Step 6: Verify pom.xml
 
 Check your updated `pom.xml`. You should see:
 
@@ -416,7 +439,7 @@ Check your updated `pom.xml`. You should see:
 </parent>
 ```
 
-### Step 6: Update JAVA_HOME
+### Step 7: Update JAVA_HOME
 
 Ensure your system uses JDK 21:
 
@@ -446,7 +469,7 @@ java -version
 # Should show: java version "21.x.x"
 ```
 
-### Step 7: Clean and Rebuild
+### Step 8: Clean and Rebuild
 
 ```bash
 mvn clean install
@@ -456,7 +479,7 @@ Watch for `Compiling 7 source files with javac [release 21]` — confirms Java 2
 
 Expected: `Tests run: 8, Failures: 0, Errors: 0, Skipped: 0` and `BUILD SUCCESS`.
 
-### Step 8: Run the Application
+### Step 9: Run the Application
 
 ```bash
 mvn spring-boot:run
@@ -592,6 +615,7 @@ public record OrderResponse(
 - [ ] Ran `mvn rewrite:discover` — both active recipes confirmed
 - [ ] Ran `mvn rewrite:dryRun` — patch file reviewed
 - [ ] Ran `mvn rewrite:run` — changes applied
+- [ ] Ran `git diff` — exactly 5 changes confirmed across 2 files
 - [ ] Updated `JAVA_HOME` to JDK 21
 - [ ] Ran `mvn clean install` — `javac [release 21]` confirmed, BUILD SUCCESS
 - [ ] Ran `mvn test` — all 8 tests pass
