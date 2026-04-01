@@ -341,8 +341,6 @@ Access the H2 database console at: `http://localhost:8080/h2-console`
 
 ## Migrating to Java 21
 
-Follow the blog post instructions to migrate this project to Java 21 using OpenRewrite:
-
 ### Step 1: Add OpenRewrite Plugin
 
 Add this to your `pom.xml` in the `<build><plugins>` section:
@@ -373,43 +371,234 @@ Add this to your `pom.xml` in the `<build><plugins>` section:
 </plugin>
 ```
 
-### Step 2: Run Migration
+### Step 2: Discover Available Recipes
 
 ```bash
-# Discover available recipes
 mvn rewrite:discover
+```
 
-# Dry run to preview changes
+Verifies the plugin is wired up and both active recipes are loaded. Read-only — no files are changed.
+
+### Step 3: Dry Run — Preview Changes
+
+```bash
 mvn rewrite:dryRun
+```
 
-# Apply the migration
+Generates a patch file at `target/rewrite/rewrite.patch` showing exactly what will change. Always review this before applying.
+
+### Step 4: Apply the Migration
+
+```bash
 mvn rewrite:run
 ```
 
-### Step 3: Update JAVA_HOME and Rebuild
+This will:
+- Update `java.version`, `maven.compiler.source`, `maven.compiler.target` from 17 to 21 in `pom.xml`
+- Upgrade Spring Boot parent from 3.1.5 to 3.3.x
+- Replace `list.get(0)` with `list.getFirst()` in test class
+
+### Step 5: Verify the Changes
+
+Check your updated `pom.xml`. You should see:
+
+```xml
+<properties>
+    <java.version>21</java.version>
+    <maven.compiler.source>21</maven.compiler.source>
+    <maven.compiler.target>21</maven.compiler.target>
+</properties>
+
+<parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>3.3.x</version>
+</parent>
+```
+
+### Step 6: Update JAVA_HOME
+
+Ensure your system uses JDK 21:
+
+#### On Linux/Mac:
+```bash
+# Check current version
+java -version
+
+# Set JAVA_HOME
+export JAVA_HOME=/path/to/jdk-21
+export PATH=$JAVA_HOME/bin:$PATH
+```
+
+#### On Windows:
+```cmd
+# Check current version
+java -version
+
+# Set JAVA_HOME
+set JAVA_HOME=C:\path\to\jdk-21
+set PATH=%JAVA_HOME%\bin;%PATH%
+```
+
+#### Verify:
+```bash
+java -version
+# Should show: java version "21.x.x"
+```
+
+### Step 7: Clean and Rebuild
 
 ```bash
-# Set JAVA_HOME to JDK 21
-export JAVA_HOME=/path/to/jdk-21
-
-# Clean and rebuild
 mvn clean install
 ```
 
-### Step 4: Test
+Watch for `Compiling 7 source files with javac [release 21]` — confirms Java 21 is active.
+
+Expected: `Tests run: 8, Failures: 0, Errors: 0, Skipped: 0` and `BUILD SUCCESS`.
+
+### Step 8: Run the Application
 
 ```bash
-mvn test
+mvn spring-boot:run
 ```
+
+---
+
+## Troubleshooting
+
+### "invalid target release: 21"
+
+**Cause:** Maven compiler plugin not finding JDK 21 — `JAVA_HOME` points to an older JDK.
+
+**Fix:** Set `JAVA_HOME` to JDK 21 and verify with `java -version` before rebuilding.
+
+### Dependency Resolution Failures
+
+**Cause:** Maven cache issues or incompatible third-party libraries.
+
+**Fix:**
+```bash
+# Force update dependencies
+mvn clean install -U
+```
+
+For library incompatibilities — Spring Boot 3.3 manages most versions automatically. For anything unmanaged, check the library's release notes for a Java 21 compatible version.
+
+### Spring Boot Application Fails to Start
+
+**Cause:** Incompatible dependencies with Spring Boot 3.3.
+
+**Fix:** Ensure all dependencies use `jakarta.*` instead of `javax.*` packages and are compatible with Spring Boot 3.3.
+
+---
 
 ## Post-Migration Enhancements
 
-After migrating to Java 21, you can refactor the code to use:
+After migrating, Java 21 features are available to adopt at your own pace:
 
-1. **Pattern Matching for switch** - Modernize `getOrderStatusMessage()`
-2. **Sequenced Collections** - Simplify `getRecentOrders()`
-3. **Virtual Threads** - Enable in `application.yml`
-4. **Record Patterns** - Create DTOs for API responses
+### 1. Enable Virtual Threads
+
+Update `src/main/resources/application.yml`:
+
+```yaml
+spring:
+  threads:
+    virtual:
+      enabled: true
+```
+
+Enables Virtual Threads for all Spring MVC request handling — improves scalability for I/O-bound workloads.
+
+### 2. Pattern Matching for switch
+
+Modernize `OrderService.getOrderStatusMessage()`:
+
+**Before:**
+```java
+public String getOrderStatusMessage(Order order) {
+    switch (order.getStatus()) {
+        case PENDING:
+            return "Your order is awaiting confirmation";
+        case CONFIRMED:
+            return "Your order has been confirmed";
+        default:
+            return "Unknown order status";
+    }
+}
+```
+
+**After:**
+```java
+public String getOrderStatusMessage(Order order) {
+    return switch (order.getStatus()) {
+        case PENDING    -> "Your order is awaiting confirmation";
+        case CONFIRMED  -> "Your order has been confirmed and will be processed soon";
+        case PROCESSING -> "Your order is being processed";
+        case SHIPPED    -> "Your order has been shipped and is on the way";
+        case DELIVERED  -> "Your order has been delivered successfully";
+        case CANCELLED  -> "Your order has been cancelled";
+    };
+}
+```
+
+### 3. Sequenced Collections
+
+Modernize `OrderService.getRecentOrders()`:
+
+**Before:**
+```java
+public List<Order> getRecentOrders(int limit) {
+    List<Order> allOrders = orderRepository.findAll();
+    int size = allOrders.size();
+    int startIndex = Math.max(0, size - limit);
+    return allOrders.subList(startIndex, size)
+        .stream()
+        .sorted((o1, o2) -> o2.getCreatedAt().compareTo(o1.getCreatedAt()))
+        .toList();
+}
+```
+
+**After:**
+```java
+public List<Order> getRecentOrders(int limit) {
+    List<Order> allOrders = orderRepository.findAll();
+    return allOrders.reversed()
+        .stream()
+        .limit(limit)
+        .toList();
+}
+```
+
+### 4. Record DTOs
+
+Create `OrderResponse.java`:
+
+```java
+public record OrderResponse(
+    Long id,
+    String customerEmail,
+    String amount,
+    String status,
+    String message
+) {}
+```
+
+---
+
+## Migration Checklist
+
+- [ ] Backed up code (Git commit before running `rewrite:run`)
+- [ ] Added OpenRewrite plugin to `pom.xml`
+- [ ] Ran `mvn rewrite:discover` — both active recipes confirmed
+- [ ] Ran `mvn rewrite:dryRun` — patch file reviewed
+- [ ] Ran `mvn rewrite:run` — changes applied
+- [ ] Updated `JAVA_HOME` to JDK 21
+- [ ] Ran `mvn clean install` — `javac [release 21]` confirmed, BUILD SUCCESS
+- [ ] Ran `mvn test` — all 8 tests pass
+- [ ] Tested application manually
+- [ ] Committed migrated code to version control
+
+---
 
 ## Technologies Used
 
